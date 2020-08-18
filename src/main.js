@@ -7,3 +7,4 @@ Vue.component("svg-icon",svgIcon)
 new Vue({
   render: h => h(App),
 }).$mount('#app')
+// 测试SSH速度
