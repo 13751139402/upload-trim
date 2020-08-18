@@ -6,7 +6,13 @@
       </div>
       <div class="dialog-contant">
         <div class="modal-trim">
-          <canvas id="trim" ref="trim" width="400" height="260" @mousemove="handleMouseMoveCanvas"></canvas>
+          <canvas
+            id="trim"
+            ref="canvasRef"
+            width="300"
+            height="300"
+            @mousemove="handleMouseMoveCanvas"
+          ></canvas>
         </div>
         <div class="trim-previwe">
           <canvas id="squarePreview"></canvas>
@@ -54,12 +60,11 @@ export default {
     return {
       // 确认按钮加载状态
       loading: false,
-      // 裁剪canvas的元素
-      trimCanvas: false,
       // 裁剪canvas的环境
-      trimCtx: false,
+      showImg: false,
+      canvasRef: {},
       // 当前图片
-      currentImage: false,
+      image: false,
       // 裁剪框参数
       trimPosition: {
         startX: 50,
@@ -74,63 +79,64 @@ export default {
   watch: {
     async file(file) {
       await this.$nextTick();
-      this.trimCanvas = this.$refs.trim;
-      this.trimCtx = Object.freeze(this.trimCanvas.getContext("2d"));
-      this.drawImage(file);
+      this.canvasRef = this.$refs.canvasRef;
+      this.showImg = Object.freeze(this.canvasRef.getContext("2d"));
+      this.filesInfo(file);
     },
   },
   methods: {
-    // 图片打印至canvas
-    drawImage(rawfile) {
+    // 打印选中的图片文件
+    filesInfo(rawfile) {
       const file = rawfile.target.files[0];
       const reader = new FileReader();
-      const _this = this;
       reader.onload = (e) => {
-        const image = (this.currentImage = new Image());
+        const image = (this.image = new Image());
         image.className = "image-class";
         image.src = e.target.result;
         image.onload = () => {
-          const canvas = _this.trimCanvas;
-          // 1.canvas.style.width  canvas的盒子模型宽高
-          // 2.canvas.width        canvas的画布宽高
-          // 画布的style.width会拉伸缩放canvas
-          const { width: canvasWidth, height: canvasHeight } = _this.trimCanvas;
-          let { width: imageWidth, height: imageHeight } = image;
-          // 获取宽高比例，因为canvas height 比较短，所以需要把进行缩放
-          const heightRatio = canvasHeight / imageHeight;
-          const widthRatio = canvasWidth / imageWidth;
-          const canvasRatio = canvasHeight / canvasWidth;
-          const imageRatio = imageHeight / imageWidth;
-          let ratio = 1;
-          // 如果图片宽高比 比 canvas大 则需要进行缩小
-          if (imageRatio > canvasRatio) {
-            ratio = canvasRatio / imageRatio;
-          }
-          // -- 图片同比例打印
-          canvas.width = imageWidth;
-          canvas.height = imageHeight;
-          // -- 控制style.height进行拉伸
-          if (imageWidth > imageHeight) {
-            canvas.style.height = imageHeight * widthRatio * ratio + "px";
-          } else {
-            canvas.style.width = imageWidth * heightRatio * ratio + "px";
-          }
-          // 等比例缩放
-          _this.trimCtx.drawImage(image, 0, 0);
+          this.drawImage(image);
         };
       };
       reader.readAsDataURL(file);
     },
+    // 预览图片
+    drawImage(image) {
+      // 清除画布
+      this.showImg.clearRect(0, 0, this.canvasRef.width, this.canvasRef.height);
+      // 设置默认canvas元素大小
+      const canvasDefaultSize = 300;
+      // 初始化canvas画布大小, 获取等比例缩放后的canvas宽高尺寸
+      let xiangsubi = 1;
+      let proportion = image.width / image.height,
+        // 大于1表示宽大,小于1表示高大
+        // canvas相除拿到缩放比例
+        scale =
+          proportion > 1
+            ? canvasDefaultSize / image.width
+            : canvasDefaultSize / image.height,
+        // 宽高都相同缩放
+        canvasWidth = image.width * scale * xiangsubi,
+        canvasHeight = image.height * scale * xiangsubi;
+      console.log(canvasWidth, canvasHeight);
+      this.canvasRef.width = canvasWidth;
+      this.canvasRef.height = canvasHeight;
+      // this.canvasRef.style.width = canvasWidth / xiangsubi + "px";
+      // this.canvasRef.style.height = canvasHeight / xiangsubi + "px";
+      // 绘制图片，这个image就是我们刚刚获取的Image对象
+      this.image = image; // 保存这个Image对象
+      this.showImg.drawImage(image, 0, 0);
+      this.drawTrim();
+    },
     // 绘制裁剪框方法
     drawTrim() {
       const { startX, startY, width, height } = this.trimPosition;
-      const ctx = this.trimCtx;
-      const canvas = this.trimCanvas;
+      const ctx = this.showImg;
+      const canvasRef = this.canvasRef;
       // ------------------------------- 我的
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.clearRect(0, 0, canvasRef.width, canvasRef.height);
       // -------------------- 绘制蒙版
       ctx.fillStyle = "rgba(0,0,0,0.6)"; // 蒙层颜色
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.fillRect(0, 0, canvasRef.width, canvasRef.height);
       ctx.save();
       // -------------------- 裁剪选择框
       ctx.clearRect(startX, startY, width, height);
@@ -166,19 +172,18 @@ export default {
         cursor: "se",
       });
       borderArr.forEach(({ x, y, size }) => {
-        console.log("打印的8个电:", x, y, size, size);
         ctx.fillRect(x, y, size, size);
       });
       // -------------------- 图片置底
       ctx.globalCompositeOperation = "destination-over";
-      ctx.drawImage(this.currentImage, 0, 0, canvas.width, canvas.height);
+      ctx.drawImage(this.image, 0, 0, canvasRef.width, canvasRef.height);
     },
     // ------------------------- 拖拽功能 开始 ------------------------
     moveTrim(mouseX, mouseY) {
       let flag = false;
       const borderArr = this.borderArr;
-      const ctx = this.trimCtx;
-      const canvas = this.trimCanvas;
+      const ctx = this.showImg;
+      const canvas = this.canvasRef;
       // ------------------------ 拖拽裁剪框
       // console.group("鼠标拖动");
 
@@ -269,7 +274,8 @@ export default {
         background-image: url(https://s10.mogucdn.com/mlcdn/c45406/190723_3afckd96l9h4fh6lcb56117cld176_503x503.jpg);
         background-size: cover;
         margin: 20px;
-        width: 400px;
+        width: 300px;
+        height: 300px;
         /* 使canvas始终居中 */
         canvas {
           cursor: default;
